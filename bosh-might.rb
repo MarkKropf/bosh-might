@@ -3,6 +3,7 @@
 require 'rubygems'
 require 'aws-sdk'
 require 'colored'
+require 'open4'
 
 AWS.config(:access_key_id     => ENV['AWS_ACCESS_KEY_ID'],
            :secret_access_key => ENV['AWS_SECRET_ACCESS_KEY'])
@@ -28,8 +29,13 @@ class String
     end
   end
 
-def term_out(arg)
-  puts $prefix + arg.white
+def term_out(arg,newline=true)
+  if newline
+    nl = "\n"
+  else
+    nl = ""
+  end
+  print $prefix + arg.white + nl
 end
 
 if cf_release_version == nil
@@ -68,13 +74,10 @@ instance = ec2.instances.create(:image_id        => ami_name,
                                   }
                                 ])
 term_out "Launching bosh-lite instance ..."
-
-# wait until battle station is fully operational
 sleep 1 until instance.status != :pending
 term_out "Launched instance #{instance.id}, status: #{instance.status}, public dns: #{instance.dns_name}, public ip: #{instance.ip_address}"
 exit 1 unless instance.status == :running
-sleep 60 # yeah, running isn't really running
-#omg what a hack
+sleep 5
 $ip_address = instance.ip_address
 
 def ssh_command(arg, output=false)
@@ -83,14 +86,20 @@ def ssh_command(arg, output=false)
   else
     suffix = "> /dev/null 2>&1"
   end
-  `ssh -o "StrictHostKeyChecking no" #{$ssh_username}@#{$ip_address} 'export DEBIAN_FRONTEND="noninteractive"; #{arg} #{suffix}'`
+  res = Open4::popen4("ssh -o \"StrictHostKeyChecking no\" #{$ssh_username}@#{$ip_address} 'export DEBIAN_FRONTEND=\"noninteractive\"; #{arg} #{suffix}'") do |pid, stdin, stdout, stderr|
+    if stdout.read.strip.include? 'Connection refused'
+      print "."
+      sleep 5
+      ssh_command arg
+    end
+  end
 end
 
-
-
-
-term_out "Install Git, libmysql, libpq"
+term_out "Attempting to SSH to instance",false
 ssh_command "sudo apt-get -y update"
+ssh_command "sudo apt-get -y update" #gotta fix this hack
+term_out "!"
+term_out "Install Git, libmysql, libpq"
 ssh_command "sudo apt-get -q -y install git libmysqlclient-dev libpq-dev"
 term_out "Install Bundler"
 ssh_command "sudo gem install bundler --no-rdoc --no-ri"
