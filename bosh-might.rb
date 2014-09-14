@@ -141,4 +141,4 @@ ssh_command "bosh -n deploy", true
 
 term_out "Launched: You can SSH to it with;"
 term_out "ssh #{$ssh_username}@#{instance.ip_address}"
-term_out "Remember to terminate after your'e done!"
+term_out "Remember to terminate the instance after you are done!"
